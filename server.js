@@ -1,54 +1,49 @@
 const express = require("express");
 const router = express.Router();
 const cors = require("cors");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 require('dotenv').config(); 
 
-// server used to send emails
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use("/", router);
+
+// Render assigns a dynamic port, falls back to 5000 locally
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server Running on port ${PORT}`));
 
-const contactEmail = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS  
-  },
-});
+// Initialize Resend with your API Key
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-contactEmail.verify((error) => {
-  if (error) {
-    console.log("Nodemailer Error:", error);
-  } else {
-    console.log("Ready to Send");
-  }
-});
-
-router.post("/contact", (req, res) => {
+router.post("/contact", async (req, res) => {
   const name = req.body.firstName + " " + req.body.lastName; 
   const email = req.body.email;
   const message = req.body.message;
   const phone = req.body.phone;
   
-  const mail = {
-    from: name,
-    to: process.env.EMAIL_USER,
-    subject: "Contact Form Submission - Portfolio",
-    html: `<p>Name: ${name}</p>
-           <p>Email: ${email}</p>
-           <p>Phone: ${phone}</p>
-           <p>Message: ${message}</p>`,
-  };
-  
-  contactEmail.sendMail(mail, (error) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Portfolio Contact <onboarding@resend.dev>', // Resend's default testing address
+      to: process.env.MY_EMAIL,
+      reply_to: email,
+      subject: `Portfolio Contact Form: ${name}`,
+      html: `<p><strong>Name:</strong> ${name}</p>
+             <p><strong>Email:</strong> ${email}</p>
+             <p><strong>Phone:</strong> ${phone}</p>
+             <p><strong>Message:</strong> ${message}</p>`,
+    });
+
     if (error) {
-      res.json(error);
-    } else {
-      res.json({ code: 200, status: "Message Sent" });
+      console.error("Resend Error:", error);
+      return res.json(error); // Triggers frontend "Something went wrong" message
     }
-  });
+    
+    // Triggers frontend "Message sent successfully" message
+    res.json({ code: 200, status: "Message Sent" }); 
+
+  } catch (err) {
+    console.error("Server Error:", err);
+    res.json(err);
+  }
 });
